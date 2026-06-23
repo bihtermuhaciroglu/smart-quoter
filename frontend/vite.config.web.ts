@@ -35,6 +35,7 @@ export default defineConfig({
     })
   ],
   root: resolve(__dirname, 'src/renderer'),
+  envDir: resolve(__dirname, '.'),
   build: {
     outDir: resolve(__dirname, 'dist-web'),
     emptyOutDir: true,
