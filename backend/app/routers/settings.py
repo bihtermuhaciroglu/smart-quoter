@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
+import os
+import shutil
 from app.database import get_db
 from app.models.setting import Setting, Machine
 
@@ -35,6 +37,19 @@ DEFAULT_SETTINGS = {
     "default_profit_margin": "20",
     "currency": "₺",
     "groq_api_key": "",
+    # Malzeme birim fiyatları (TRY/kg) — metals.dev desteklemeyen malzemeler için
+    "price_steel":      "",   # Çelik (St37/St52)
+    "price_stainless":  "",   # Paslanmaz
+    "price_cast_iron":  "",   # Dökme Demir
+    "price_titanium":   "",   # Titanyum
+    "price_brass":      "",   # Pirinç (metals.dev yoksa override)
+    "price_bronze":     "",   # Bronz
+    "price_abs":        "",   # Plastik ABS
+    "price_pom":        "",   # Plastik POM
+    "price_pa6":        "",   # Plastik PA6
+    "price_ptfe":       "",   # PTFE
+    "price_peek":       "",   # PEEK
+    "metals_dev_api_key": "", # metals.dev API anahtarı
 }
 
 # --- Settings endpoints ---
@@ -58,6 +73,27 @@ def update_setting(key: str, data: SettingUpdate, db: Session = Depends(get_db))
         setting.value = data.value
     db.commit()
     return {"key": key, "value": data.value}
+
+# --- Logo upload endpoint ---
+UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
+
+@router.post("/logo")
+async def upload_logo(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    os.makedirs(UPLOADS_DIR, exist_ok=True)
+    ext = os.path.splitext(file.filename or "logo.png")[1] or ".png"
+    filename = f"logo{ext}"
+    dest = os.path.join(UPLOADS_DIR, filename)
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    logo_path = dest
+    setting = db.query(Setting).filter(Setting.key == "logo_path").first()
+    if not setting:
+        setting = Setting(key="logo_path", value=logo_path)
+        db.add(setting)
+    else:
+        setting.value = logo_path
+    db.commit()
+    return {"logo_path": logo_path, "url": f"/uploads/{filename}"}
 
 # --- Machine endpoints ---
 @router.get("/machines", response_model=List[MachineOut])

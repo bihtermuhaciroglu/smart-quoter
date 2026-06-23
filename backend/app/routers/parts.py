@@ -10,7 +10,9 @@ from app.models.part import Part
 
 router = APIRouter(prefix="/parts", tags=["parts"])
 
-UPLOAD_DIR = "uploads"
+_data_dir = os.environ.get("SMART_QUOTER_DATA", ".")
+UPLOAD_DIR = os.path.join(_data_dir, "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 class PartCreate(BaseModel):

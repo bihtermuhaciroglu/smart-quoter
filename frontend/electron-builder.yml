@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: smart-quoter
+appId: com.dbscnc.smartquoter
+productName: Smart Quoter
 directories:
   buildResources: build
 files:
@@ -9,6 +9,11 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+extraResources:
+  - from: '../backend/dist/backend_server'
+    to: 'backend'
+    filter:
+      - '**/*'
 asarUnpack:
   - resources/**
 win:

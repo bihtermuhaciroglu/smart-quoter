@@ -8,7 +8,7 @@ import tempfile
 import os
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_LEFT
 from reportlab.lib.units import mm
@@ -111,152 +111,315 @@ def download_quote_pdf(quote_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Teklif bulunamadı")
     part = db.query(Part).filter(Part.id == quote.part_id).first()
     part_name = tr_fix(part.name) if part else "-"
+    ops = db.query(Operation).filter(Operation.part_id == quote.part_id).all()
 
-    # Firma ayarlarını çek
     raw = {s.key: (s.value or "") for s in db.query(Setting).all()}
-    company_name   = tr_fix(raw.get("company_name", "Smart Quoter"))
-    app_name       = tr_fix(raw.get("app_name", "Smart Quoter"))
-    tagline        = tr_fix(raw.get("tagline", "CNC Talasli Imalat Teklif Sistemi"))
-    address        = tr_fix(raw.get("address", ""))
-    phone          = raw.get("phone", "")
-    email          = raw.get("email", "")
-    tax_number     = raw.get("tax_number", "")
-    currency       = raw.get("currency", "TL")
+    company_name  = tr_fix(raw.get("company_name", "Smart Quoter"))
+    app_name      = tr_fix(raw.get("app_name", "Smart Quoter"))
+    tagline       = tr_fix(raw.get("tagline", "CNC Talasli Imalat"))
+    address       = tr_fix(raw.get("address", ""))
+    phone         = raw.get("phone", "")
+    email         = raw.get("email", "")
+    tax_number    = raw.get("tax_number", "")
+    logo_path_val = raw.get("logo_path", "")
+
+    # ── Renkler ──
+    C_NAVY   = colors.HexColor("#1a2744")
+    C_ACCENT = colors.HexColor("#2563eb")
+    C_SEP    = colors.HexColor("#e2e8f0")
+    C_DARK   = colors.HexColor("#0f172a")
+    C_MUTED  = colors.HexColor("#64748b")
+    C_LBLUE  = colors.HexColor("#f0f4ff")
+    C_ALT    = colors.HexColor("#f8faff")
+    C_TOTAL  = colors.HexColor("#dde8ff")
+    C_WHITE  = colors.white
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-    page_w, page_h = A4
+    page_w, _ = A4
     doc = SimpleDocTemplate(
         tmp.name, pagesize=A4,
         leftMargin=15*mm, rightMargin=15*mm,
         topMargin=15*mm, bottomMargin=20*mm
     )
-    styles = getSampleStyleSheet()
-    content_width = page_w - 30*mm
+    W = page_w - 30*mm  # kullanılabilir genişlik
 
-    # Özel stiller
-    style_company = ParagraphStyle("company", fontSize=18, fontName="Helvetica-Bold",
-                                   textColor=colors.HexColor("#0d1b3e"), spaceAfter=2)
-    style_tagline  = ParagraphStyle("tagline",  fontSize=9,  fontName="Helvetica",
-                                   textColor=colors.HexColor("#555555"), spaceAfter=2)
-    style_contact  = ParagraphStyle("contact",  fontSize=8,  fontName="Helvetica",
-                                   textColor=colors.HexColor("#777777"))
-    style_label    = ParagraphStyle("label",    fontSize=8,  fontName="Helvetica-Bold",
-                                   textColor=colors.HexColor("#333333"))
-    style_value    = ParagraphStyle("value",    fontSize=8,  fontName="Helvetica",
-                                   textColor=colors.HexColor("#111111"))
-    style_section  = ParagraphStyle("section",  fontSize=10, fontName="Helvetica-Bold",
-                                   textColor=colors.HexColor("#0d1b3e"), spaceBefore=14, spaceAfter=6)
-    style_footer   = ParagraphStyle("footer",   fontSize=7.5, fontName="Helvetica",
-                                   textColor=colors.HexColor("#aaaaaa"), alignment=TA_CENTER)
-    style_right    = ParagraphStyle("right",    fontSize=8,  fontName="Helvetica",
-                                   alignment=TA_RIGHT, textColor=colors.HexColor("#333333"))
+    # ── Stil tanımları (wordWrap/CJK kullanılmıyor — Paragraph zaten wrap yapar) ──
+    def ps(name, **kw):
+        return ParagraphStyle(name, **kw)
+
+    S = {
+        "co":  ps("co",  fontSize=17, fontName="Helvetica-Bold",  textColor=C_NAVY,   leading=20),
+        "tag": ps("tag", fontSize=8,  fontName="Helvetica",        textColor=C_MUTED,  leading=11),
+        "ct":  ps("ct",  fontSize=8,  fontName="Helvetica",        textColor=C_MUTED,  leading=10),
+        "lbl": ps("lbl", fontSize=8,  fontName="Helvetica-Bold",   textColor=C_MUTED,  leading=11),
+        "val": ps("val", fontSize=9,  fontName="Helvetica",        textColor=C_DARK,   leading=12),
+        "sec": ps("sec", fontSize=11, fontName="Helvetica-Bold",   textColor=C_NAVY,   spaceBefore=14, spaceAfter=6),
+        "ft":  ps("ft",  fontSize=7,  fontName="Helvetica",        textColor=C_MUTED,  alignment=TA_CENTER, leading=10),
+        "tno": ps("tno", fontSize=22, fontName="Helvetica-Bold",   textColor=C_ACCENT, alignment=TA_RIGHT, leading=26),
+        "tr":  ps("tr",  fontSize=8,  fontName="Helvetica",        textColor=C_DARK,   alignment=TA_RIGHT, leading=11),
+        "trb": ps("trb", fontSize=8,  fontName="Helvetica-Bold",   textColor=C_DARK,   alignment=TA_RIGHT, leading=11),
+        "thc": ps("thc", fontSize=9,  fontName="Helvetica-Bold",   textColor=C_WHITE,  leading=12),
+        "thcr":ps("thcr",fontSize=9,  fontName="Helvetica-Bold",   textColor=C_WHITE,  alignment=TA_RIGHT, leading=12),
+        "td":  ps("td",  fontSize=9,  fontName="Helvetica",        textColor=C_DARK,   leading=12),
+        "tdr": ps("tdr", fontSize=9,  fontName="Helvetica",        textColor=C_DARK,   alignment=TA_RIGHT, leading=12),
+        "tdb": ps("tdb", fontSize=9,  fontName="Helvetica-Bold",   textColor=C_DARK,   leading=12),
+        "tdbr":ps("tdbr",fontSize=9,  fontName="Helvetica-Bold",   textColor=C_DARK,   alignment=TA_RIGHT, leading=12),
+        "al":  ps("al",  fontSize=10, fontName="Helvetica-Bold",   textColor=C_ACCENT, leading=13),
+        "ar":  ps("ar",  fontSize=10, fontName="Helvetica-Bold",   textColor=C_ACCENT, alignment=TA_RIGHT, leading=13),
+        "wl":  ps("wl",  fontSize=10, fontName="Helvetica-Bold",   textColor=C_WHITE,  leading=13),
+        "wr":  ps("wr",  fontSize=10, fontName="Helvetica-Bold",   textColor=C_WHITE,  alignment=TA_RIGHT, leading=13),
+        "nt":  ps("nt",  fontSize=9,  fontName="Helvetica",        textColor=C_DARK,   leading=14),
+        "hdr": ps("hdr", fontSize=9,  fontName="Helvetica-Bold",   textColor=C_NAVY,   leading=12),
+        "stat":ps("stat",fontSize=9,  fontName="Helvetica-Bold",   textColor=C_ACCENT, alignment=TA_RIGHT, leading=12),
+    }
+
+    def money(v): return f"{v:,.2f} TL"
+    def P(txt, st="td"): return Paragraph(str(txt) if txt else "", S[st])
 
     story = []
 
-    # ── Başlık: firma sol / teklif bilgisi sağ ──
-    firma_lines = [Paragraph(company_name, style_company), Paragraph(tagline, style_tagline)]
-    if address: firma_lines.append(Paragraph(address, style_contact))
-    contact_parts = []
-    if phone: contact_parts.append(f"Tel: {phone}")
-    if email: contact_parts.append(f"E-posta: {email}")
-    if tax_number: contact_parts.append(f"Vergi No: {tax_number}")
-    if contact_parts:
-        firma_lines.append(Paragraph("  |  ".join(contact_parts), style_contact))
+    # ════════════════════════════════════════════
+    # BAŞLIK — Logo/Firma (sol) | Teklif No (sağ)
+    # Her hücre ayrı nested Table → yükseklik bağımsız, üst üste binme yok
+    # ════════════════════════════════════════════
+    LW = W * 0.55
+    RW = W * 0.45
 
-    status_map = {"draft": "Taslak", "sent": "Gönderildi", "accepted": "Kabul Edildi", "rejected": "Reddedildi"}
-    status_tr = status_map.get(quote.status, quote.status)
+    # Sol: logo + firma bilgileri satır satır
+    left_rows = []
+    if logo_path_val and os.path.exists(logo_path_val):
+        try:
+            left_rows.append([RLImage(logo_path_val, width=36*mm, height=12*mm, kind="proportional")])
+        except Exception:
+            pass
+    left_rows.append([P(company_name, "co")])
+    left_rows.append([P(tagline, "tag")])
+    if address:
+        left_rows.append([P(address, "ct")])
+    cp = []
+    if phone: cp.append(f"Tel: {phone}")
+    if email: cp.append(f"E: {email}")
+    if tax_number: cp.append(f"VKN: {tax_number}")
+    if cp:
+        left_rows.append([P("  |  ".join(cp), "ct")])
 
-    teklif_lines = [
-        Paragraph("<b>TEKLIF BELGESI</b>", ParagraphStyle("th", fontSize=14, fontName="Helvetica-Bold",
-                  textColor=colors.HexColor("#0d1b3e"), alignment=TA_RIGHT, spaceAfter=4)),
-        Paragraph(f"No: <b>{quote.quote_number}</b>", style_right),
-        Paragraph(f"Durum: <b>{status_tr}</b>", style_right),
-        Paragraph(f"Tarih: {str(quote.created_at)[:10]}", style_right),
+    left_tbl = Table(left_rows, colWidths=[LW])
+    left_tbl.setStyle(TableStyle([
+        ("LEFTPADDING",  (0,0),(-1,-1), 0),
+        ("RIGHTPADDING", (0,0),(-1,-1), 0),
+        ("TOPPADDING",   (0,0),(-1,-1), 1),
+        ("BOTTOMPADDING",(0,0),(-1,-1), 1),
+        ("VALIGN",       (0,0),(-1,-1), "TOP"),
+    ]))
+
+    # Sağ: teklif başlığı + detaylar
+    status_map = {"draft":"Taslak","sent":"Gonderildi","accepted":"Kabul Edildi","rejected":"Reddedildi"}
+    status_tr  = status_map.get(quote.status, quote.status)
+
+    right_rows = [
+        [P("TEKLIF", "tno")],
+        [P(f"No: <b>{quote.quote_number}</b>", "tr")],
+        [P(f"Tarih: {str(quote.created_at)[:10]}", "tr")],
     ]
     if quote.valid_until:
-        teklif_lines.append(Paragraph(f"Gecerlilik: {quote.valid_until}", style_right))
+        right_rows.append([P(f"Gecerlilik: {quote.valid_until}", "tr")])
+    right_rows.append([P(f"Durum: <b>{status_tr}</b>", "stat")])
 
-    header_table = Table(
-        [[firma_lines, teklif_lines]],
-        colWidths=[content_width * 0.6, content_width * 0.4]
-    )
-    header_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING",  (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    right_tbl = Table(right_rows, colWidths=[RW])
+    right_tbl.setStyle(TableStyle([
+        ("LEFTPADDING",  (0,0),(-1,-1), 0),
+        ("RIGHTPADDING", (0,0),(-1,-1), 0),
+        ("TOPPADDING",   (0,0),(-1,-1), 1),
+        ("BOTTOMPADDING",(0,0),(-1,-1), 1),
+        ("VALIGN",       (0,0),(-1,-1), "TOP"),
     ]))
-    story.append(header_table)
-    story.append(Spacer(1, 6))
-    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#0d1b3e")))
+
+    header_tbl = Table([[left_tbl, right_tbl]], colWidths=[LW, RW])
+    header_tbl.setStyle(TableStyle([
+        ("VALIGN",       (0,0),(-1,-1), "TOP"),
+        ("LEFTPADDING",  (0,0),(-1,-1), 0),
+        ("RIGHTPADDING", (0,0),(-1,-1), 0),
+        ("TOPPADDING",   (0,0),(-1,-1), 0),
+        ("BOTTOMPADDING",(0,0),(-1,-1), 0),
+    ]))
+    story.append(header_tbl)
+    story.append(Spacer(1, 8))
+    story.append(HRFlowable(width="100%", thickness=2.5, color=C_NAVY))
     story.append(Spacer(1, 12))
 
-    # ── Teklif / Müşteri / Parça bilgileri ──
-    story.append(Paragraph("Teklif Bilgileri", style_section))
-    info_data = [
-        [Paragraph("<b>Parca</b>", style_label),    Paragraph(part_name, style_value),
-         Paragraph("<b>Adet</b>", style_label),      Paragraph(str(quote.quantity), style_value)],
-        [         Paragraph("<b>Musteri</b>", style_label),   Paragraph(tr_fix(quote.customer_name or "-"), style_value),
-         Paragraph("<b>Iletisim</b>", style_label),  Paragraph(tr_fix(quote.customer_contact or "-"), style_value)],
+    # ════════════════════════════════════════════
+    # BİLGİ BLOĞU — Müşteri (sol) | Parça (sağ)
+    # ════════════════════════════════════════════
+    HW = W * 0.5  # her yarım
+
+    cust_rows = [
+        [P("<b>Musteri Bilgileri</b>", "hdr")],
+        [Table([[P("Musteri:", "lbl"), P(tr_fix(quote.customer_name or "-"), "val")]],
+               colWidths=[HW*0.30, HW*0.70],
+               style=[("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),
+                      ("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2)])],
+        [Table([[P("Iletisim:", "lbl"), P(tr_fix(quote.customer_contact or "-"), "val")]],
+               colWidths=[HW*0.30, HW*0.70],
+               style=[("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),
+                      ("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2)])],
     ]
-    info_table = Table(info_data, colWidths=[content_width*0.15, content_width*0.35,
-                                             content_width*0.15, content_width*0.35])
-    info_table.setStyle(TableStyle([
-        ("FONTSIZE",  (0, 0), (-1, -1), 9),
-        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#f0f4ff"), colors.white]),
-        ("GRID",      (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
-        ("PADDING",   (0, 0), (-1, -1), 7),
-        ("VALIGN",    (0, 0), (-1, -1), "MIDDLE"),
+    part_rows = [
+        [P("<b>Parca Bilgileri</b>", "hdr")],
+        [Table([[P("Parca:", "lbl"), P(part_name, "val")]],
+               colWidths=[HW*0.25, HW*0.75],
+               style=[("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),
+                      ("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2)])],
+        [Table([[P("Adet:", "lbl"), P(str(quote.quantity), "val")]],
+               colWidths=[HW*0.25, HW*0.75],
+               style=[("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),
+                      ("TOPPADDING",(0,0),(-1,-1),2),("BOTTOMPADDING",(0,0),(-1,-1),2)])],
+    ]
+
+    def info_cell_tbl(rows, w):
+        t = Table(rows, colWidths=[w])
+        t.setStyle(TableStyle([
+            ("BACKGROUND",   (0,0),(-1,-1), C_LBLUE),
+            ("LEFTPADDING",  (0,0),(-1,-1), 8),
+            ("RIGHTPADDING", (0,0),(-1,-1), 8),
+            ("TOPPADDING",   (0,0),(-1,-1), 5),
+            ("BOTTOMPADDING",(0,0),(-1,-1), 5),
+            ("LINEBELOW",    (0,0),(-1,-2), 0.3, C_SEP),
+        ]))
+        return t
+
+    info_outer = Table(
+        [[info_cell_tbl(cust_rows, HW - 4), info_cell_tbl(part_rows, HW - 4)]],
+        colWidths=[HW, HW]
+    )
+    info_outer.setStyle(TableStyle([
+        ("LEFTPADDING",  (0,0),(-1,-1), 0),
+        ("RIGHTPADDING", (0,0),(-1,-1), 0),
+        ("TOPPADDING",   (0,0),(-1,-1), 0),
+        ("BOTTOMPADDING",(0,0),(-1,-1), 0),
+        ("VALIGN",       (0,0),(-1,-1), "TOP"),
+        ("INNERGRID",    (0,0),(-1,-1), 0.5, C_SEP),
+        ("BOX",          (0,0),(-1,-1), 0.5, C_SEP),
     ]))
-    story.append(info_table)
+    story.append(info_outer)
     story.append(Spacer(1, 14))
 
-    # ── Maliyet özeti ──
-    story.append(Paragraph("Maliyet Ozeti", style_section))
-    overhead_amt = (quote.material_cost + quote.total_machining_cost) * quote.overhead_rate
-    profit_amt   = (quote.material_cost + quote.total_machining_cost + overhead_amt) * quote.profit_margin
+    # ════════════════════════════════════════════
+    # OPERASYON TABLOSU
+    # ════════════════════════════════════════════
+    if ops:
+        story.append(P("Operasyon Detaylari", "sec"))
+        CW = [W*0.05, W*0.33, W*0.22, W*0.18, W*0.22]
+        op_data = [[
+            P("No",          "thc"),
+            P("Operasyon",   "thc"),
+            P("Tip / Makine","thc"),
+            P("Sure (dk)",   "thcr"),
+            P("Maliyet (TL)","thcr"),
+        ]]
+        for i, op in enumerate(ops):
+            op_data.append([
+                P(str(i+1),                              "td"),
+                P(tr_fix(op.machine_name or "-"),        "td"),
+                P(tr_fix(op.operation_type or "-"),      "td"),
+                P(f"{op.cycle_time_min:.1f}",            "tdr"),
+                P(f"{op.machining_cost:,.2f} TL",        "tdr"),
+            ])
+        op_data.append([
+            P(""), P(""), P(""),
+            P("TOPLAM:", "tdbr"),
+            P(f"{sum(o.machining_cost for o in ops):,.2f} TL", "tdbr"),
+        ])
+        op_tbl = Table(op_data, colWidths=CW, repeatRows=1)
+        n = len(ops)
+        op_tbl.setStyle(TableStyle([
+            ("BACKGROUND",     (0,0),(-1,0),  C_NAVY),
+            ("ROWBACKGROUNDS", (0,1),(-1,n),   [C_WHITE if i%2==0 else C_ALT for i in range(n)]),
+            ("BACKGROUND",     (0,-1),(-1,-1), C_TOTAL),
+            ("BOX",            (0,0),(-1,-1),  0.5, C_SEP),
+            ("INNERGRID",      (0,0),(-1,-1),  0.3, C_SEP),
+            ("LEFTPADDING",    (0,0),(-1,-1),  7),
+            ("RIGHTPADDING",   (0,0),(-1,-1),  7),
+            ("TOPPADDING",     (0,0),(-1,-1),  6),
+            ("BOTTOMPADDING",  (0,0),(-1,-1),  6),
+            ("VALIGN",         (0,0),(-1,-1),  "MIDDLE"),
+        ]))
+        story.append(op_tbl)
+        story.append(Spacer(1, 14))
 
-    def money(val): return f"{val:,.2f} {currency}"
+    # ════════════════════════════════════════════
+    # MALİYET ÖZETİ — sağa hizalı, tek tablo
+    # ════════════════════════════════════════════
+    story.append(P("Maliyet Ozeti", "sec"))
+    ara = quote.material_cost + quote.total_machining_cost
+    CL = W * 0.44   # etiket sütunu
+    CR = W * 0.26   # tutar sütunu
+    CO = W - CL - CR  # sol boşluk
 
     cost_data = [
-        ["Maliyet Kalemi", "Tutar"],
-        ["Hammadde Maliyeti",                                   money(quote.material_cost)],
-        ["Isleme Maliyeti",                                     money(quote.total_machining_cost)],
-        [f"Genel Gider (%{quote.overhead_rate*100:.0f})",       money(overhead_amt)],
-        [f"Kar Marji (%{quote.profit_margin*100:.0f})",         money(profit_amt)],
-        ["Toplam Maliyet",                                      money(quote.total_cost)],
-        [f"BIRIM FIYAT  (x{quote.quantity} adet)",              money(quote.unit_price)],
+        [P("Maliyet Kalemi","thc"),  P("Tutar","thcr")],
+        [P("Hammadde Maliyeti","td"), P(money(quote.material_cost),"tdr")],
+        [P("Isleme Maliyeti","td"),   P(money(quote.total_machining_cost),"tdr")],
+        [P("Ara Toplam","tdb"),       P(money(ara),"tdbr")],
+        [P("TOPLAM","al"),            P(money(quote.total_cost),"ar")],
+        [P(f"BIRIM FIYAT (x{quote.quantity} adet)","wl"),
+         P(f"{quote.unit_price:,.2f} TL / adet","wr")],
     ]
-    cost_table = Table(cost_data, colWidths=[content_width * 0.65, content_width * 0.35])
-    cost_table.setStyle(TableStyle([
-        ("FONTNAME",    (0, 0), (-1,  0), "Helvetica-Bold"),
-        ("FONTNAME",    (0, -2), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE",    (0, 0), (-1, -1), 10),
-        ("BACKGROUND",  (0, 0), (-1,  0), colors.HexColor("#0d1b3e")),
-        ("TEXTCOLOR",   (0, 0), (-1,  0), colors.white),
-        ("BACKGROUND",  (0, -2), (-1, -2), colors.HexColor("#dde8ff")),
-        ("BACKGROUND",  (0, -1), (-1, -1), colors.HexColor("#0055cc")),
-        ("TEXTCOLOR",   (0, -1), (-1, -1), colors.white),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -3), [colors.HexColor("#f7f9ff"), colors.white]),
-        ("GRID",        (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
-        ("PADDING",     (0, 0), (-1, -1), 9),
-        ("ALIGN",       (1, 0), (1, -1), "RIGHT"),
+    inner_cost = Table(cost_data, colWidths=[CL, CR])
+    inner_cost.setStyle(TableStyle([
+        ("BACKGROUND",     (0,0),(-1,0),  C_NAVY),
+        ("ROWBACKGROUNDS", (0,1),(-1,2),  [C_ALT, C_WHITE]),
+        ("BACKGROUND",     (0,3),(-1,3),  C_TOTAL),
+        ("BACKGROUND",     (0,4),(-1,4),  C_LBLUE),
+        ("BACKGROUND",     (0,5),(-1,5),  C_ACCENT),
+        ("BOX",            (0,0),(-1,-1), 0.5, C_SEP),
+        ("INNERGRID",      (0,0),(-1,-1), 0.3, C_SEP),
+        ("LINEABOVE",      (0,3),(-1,3),  1.5, C_NAVY),
+        ("LEFTPADDING",    (0,0),(-1,-1), 9),
+        ("RIGHTPADDING",   (0,0),(-1,-1), 9),
+        ("TOPPADDING",     (0,0),(-1,-1), 8),
+        ("BOTTOMPADDING",  (0,0),(-1,-1), 8),
+        ("VALIGN",         (0,0),(-1,-1), "MIDDLE"),
     ]))
-    story.append(cost_table)
 
+    # Sağa yaslamak için boşluk + tablo wrapper
+    cost_wrap = Table([[Paragraph(""), inner_cost]], colWidths=[CO, CL+CR])
+    cost_wrap.setStyle(TableStyle([
+        ("LEFTPADDING",  (0,0),(-1,-1), 0),
+        ("RIGHTPADDING", (0,0),(-1,-1), 0),
+        ("TOPPADDING",   (0,0),(-1,-1), 0),
+        ("BOTTOMPADDING",(0,0),(-1,-1), 0),
+        ("VALIGN",       (0,0),(-1,-1), "TOP"),
+    ]))
+    story.append(cost_wrap)
+
+    # ════════════════════════════════════════════
+    # NOTLAR
+    # ════════════════════════════════════════════
     if quote.notes:
         story.append(Spacer(1, 14))
-        story.append(Paragraph("Notlar / Notes", style_section))
-        story.append(Paragraph(tr_fix(quote.notes), styles["Normal"]))
+        story.append(P("Notlar", "sec"))
+        nt = Table([[P(tr_fix(quote.notes), "nt")]], colWidths=[W])
+        nt.setStyle(TableStyle([
+            ("BACKGROUND", (0,0),(-1,-1), C_LBLUE),
+            ("BOX",        (0,0),(-1,-1), 0.5, C_SEP),
+            ("LEFTPADDING", (0,0),(-1,-1), 10),
+            ("RIGHTPADDING",(0,0),(-1,-1), 10),
+            ("TOPPADDING",  (0,0),(-1,-1), 8),
+            ("BOTTOMPADDING",(0,0),(-1,-1),8),
+        ]))
+        story.append(nt)
 
-    # ── Alt bilgi ──
+    # ════════════════════════════════════════════
+    # ALT BİLGİ
+    # ════════════════════════════════════════════
     story.append(Spacer(1, 24))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cccccc")))
-    story.append(Spacer(1, 6))
-    footer_text = f"{company_name}"
-    if phone: footer_text += f"  ·  {phone}"
-    if email: footer_text += f"  ·  {email}"
-    story.append(Paragraph(footer_text, style_footer))
-    story.append(Paragraph(f"Bu belge {app_name} ile olusturulmustur.", style_footer))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=C_SEP))
+    story.append(Spacer(1, 5))
+    ft = company_name
+    if phone: ft += f"  |  {phone}"
+    if email: ft += f"  |  {email}"
+    story.append(Paragraph(ft, S["ft"]))
+    story.append(Paragraph(f"Bu belge {app_name} ile olusturulmustur.", S["ft"]))
 
     doc.build(story)
     return FileResponse(

@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { T, inp, btn, card } from "../theme";
 import { useLanguage } from "../i18n/LanguageContext";
+import client from "../api/client";
 import {
   getSettings, updateSetting,
   getMachines, createMachine, updateMachine, deleteMachine,
@@ -20,6 +21,9 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [machines, setMachines] = useState<Machine[]>([]);
   const [saved, setSaved] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoMsg, setLogoMsg] = useState("");
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const [newMachine, setNewMachine] = useState<MachineInput>({ name: "", machine_type: "Tornalama", hourly_rate: 0 });
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -74,6 +78,23 @@ export default function SettingsPage() {
     load();
   }
 
+  async function handleLogoUpload(file: File) {
+    setLogoUploading(true);
+    setLogoMsg("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await client.post("/settings/logo", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setSettings(prev => ({ ...prev, logo_path: res.data.logo_path, logo_url: res.data.url }));
+      setLogoMsg("✓ Logo yüklendi");
+      setTimeout(() => setLogoMsg(""), 3000);
+      await load();
+    } catch {
+      setLogoMsg("Yükleme hatası");
+    }
+    setLogoUploading(false);
+  }
+
   const fieldRow = (label: string, key: string, type = "text", placeholder = "") => (
     <div key={key} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
       <div style={{ width: 180, fontSize: 13, color: T.textSec, flexShrink: 0 }}>{label}</div>
@@ -117,6 +138,53 @@ export default function SettingsPage() {
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10 }}>
             <button onClick={saveAll} style={btn(T.green)}>{t.common.save}</button>
             {saved === "all" && <span style={{ fontSize: 12, color: T.green }}>✓ {t.common.saved}</span>}
+          </div>
+        </div>
+
+        {/* Firma Logosu */}
+        <div style={card()}>
+          {section("Firma Logosu")}
+          <div style={{ fontSize: 12, color: T.textMut, marginBottom: 12 }}>
+            Logo PDF tekliflerine eklenir. JPG, PNG veya WEBP formatı desteklenir.
+          </div>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            {settings["logo_path"] && (
+              <div style={{ border: `1px solid ${T.border}`, borderRadius: 6, padding: 8, background: T.bgInput }}>
+                <img
+                  src={`http://localhost:8000/uploads/${settings["logo_path"].split("/").pop()}`}
+                  alt="Firma logosu"
+                  style={{ maxHeight: 48, maxWidth: 160, objectFit: "contain", display: "block" }}
+                  onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                />
+              </div>
+            )}
+            <label
+              style={{
+                fontSize: 13,
+                color: T.textSec,
+                cursor: "pointer",
+                padding: "7px 14px",
+                border: `1px dashed ${T.borderL}`,
+                borderRadius: 5,
+                background: T.bgInput,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <span>📁</span>
+              {logoUploading ? "Yükleniyor..." : settings["logo_path"] ? "Logoyu Değiştir" : "Logo Seç"}
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); }}
+              />
+            </label>
+            {logoMsg && (
+              <span style={{ fontSize: 12, color: logoMsg.startsWith("✓") ? T.green : T.red }}>{logoMsg}</span>
+            )}
           </div>
         </div>
 

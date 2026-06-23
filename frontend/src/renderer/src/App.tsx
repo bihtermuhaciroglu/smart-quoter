@@ -11,27 +11,10 @@ import FlowChartPage from "./pages/FlowChartPage";
 import QuotesPage from "./pages/QuotesPage";
 import AIPage from "./pages/AIPage";
 import SettingsPage from "./pages/SettingsPage";
+import NearbyPage from "./pages/NearbyPage";
+import WeightPage from "./pages/WeightPage";
 
-type Page = "dashboard" | "parts" | "operations" | "fmea" | "flowchart" | "quotes" | "ai" | "settings";
-
-const menu: { id: Page; label: string; icon: string; group?: string }[] = [
-  { id: "dashboard",  label: "Dashboard",       icon: "▣", group: "Genel" },
-  { id: "parts",      label: "Parçalar",         icon: "◎", group: "Üretim" },
-  { id: "operations", label: "Operasyonlar",     icon: "⚙", group: "Üretim" },
-  { id: "fmea",       label: "FMEA Analizi",     icon: "⚠", group: "Kalite" },
-  { id: "flowchart",  label: "Akış Diyagramı",   icon: "⇶", group: "Kalite" },
-  { id: "quotes",     label: "Teklifler",         icon: "◈", group: "Satış" },
-  { id: "ai",         label: "Yapay Zeka",        icon: "✦", group: "Satış" },
-  { id: "settings",   label: "Ayarlar",           icon: "⚙", group: "Sistem" },
-];
-
-const titles: Record<Page, string> = {
-  dashboard: "Dashboard", parts: "Parçalar", operations: "Operasyonlar",
-  fmea: "FMEA Analizi", flowchart: "Akış Diyagramı", quotes: "Teklifler",
-  ai: "Yapay Zeka", settings: "Ayarlar",
-};
-
-const groups = ["Genel", "Üretim", "Kalite", "Satış", "Sistem"];
+type Page = "dashboard" | "parts" | "operations" | "fmea" | "flowchart" | "quotes" | "ai" | "nearby" | "weight" | "settings";
 
 function Logo() {
   return (
@@ -52,6 +35,7 @@ function AppInner() {
   const [page, setPage] = useState<Page>("dashboard");
   const [parts, setParts] = useState<Part[]>([]);
   const [error, setError] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const { lang, setLang, t } = useLanguage();
 
   const menu: { id: Page; label: string; icon: string; group: string }[] = [
@@ -62,6 +46,8 @@ function AppInner() {
     { id: "flowchart",  label: t.nav.flowchart,   icon: "⇶", group: t.nav.groups.quality },
     { id: "quotes",     label: t.nav.quotes,      icon: "◈", group: t.nav.groups.sales },
     { id: "ai",         label: t.nav.ai,          icon: "✦", group: t.nav.groups.sales },
+    { id: "nearby",     label: "Yakın Firmalar",  icon: "📍", group: t.nav.groups.sales },
+    { id: "weight",     label: "Ağırlık Hesap",   icon: "⚖", group: t.nav.groups.production },
     { id: "settings",   label: t.nav.settings,    icon: "⚙", group: t.nav.groups.system },
   ];
 
@@ -76,7 +62,7 @@ function AppInner() {
   const titles: Record<Page, string> = {
     dashboard: t.nav.dashboard, parts: t.nav.parts, operations: t.nav.operations,
     fmea: t.nav.fmea, flowchart: t.nav.flowchart, quotes: t.nav.quotes,
-    ai: t.nav.ai, settings: t.nav.settings,
+    ai: t.nav.ai, nearby: "Yakın Firmalar", weight: "Ağırlık Hesaplama", settings: t.nav.settings,
   };
 
   async function loadParts() {
@@ -86,52 +72,111 @@ function AppInner() {
 
   useEffect(() => { loadParts(); }, []);
 
+  useEffect(() => {
+    function handleResize() {
+      if (window.innerWidth < 700) setSidebarOpen(false);
+    }
+    if (window.innerWidth < 700) setSidebarOpen(false);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   return (
     <div style={{ display: "flex", height: "100vh", fontFamily: "'Segoe UI', system-ui, sans-serif", background: T.bg, color: T.text }}>
       {/* Sidebar */}
-      <div style={{ width: 210, background: T.sidebar, display: "flex", flexDirection: "column", flexShrink: 0, borderRight: `1px solid ${T.border}` }}>
-        <div style={{ padding: "18px 16px 14px", borderBottom: `1px solid ${T.border}` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-            <Logo />
-            <div>
-              <div style={{ color: T.text, fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>{config.appName}</div>
-              <div style={{ color: T.textMut, fontSize: 10 }}>{config.companyName}</div>
+      <div style={{
+        width: sidebarOpen ? 210 : 48,
+        background: T.sidebar,
+        display: "flex",
+        flexDirection: "column",
+        flexShrink: 0,
+        borderRight: `1px solid ${T.border}`,
+        transition: "width 0.2s ease",
+        overflow: "hidden",
+      }}>
+        <div style={{
+          padding: sidebarOpen ? "18px 16px 14px" : "14px 0",
+          borderBottom: `1px solid ${T.border}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: sidebarOpen ? "flex-start" : "center",
+        }}>
+          <div style={{ flexShrink: 0 }}><Logo /></div>
+          {sidebarOpen && (
+            <div style={{ marginLeft: 10, overflow: "hidden" }}>
+              <div style={{ color: T.text, fontWeight: 700, fontSize: 14, lineHeight: 1.2, whiteSpace: "nowrap" }}>{config.appName}</div>
+              <div style={{ color: T.textMut, fontSize: 10, whiteSpace: "nowrap" }}>{config.companyName}</div>
             </div>
-          </div>
+          )}
         </div>
-        <nav style={{ padding: "8px 0", flex: 1, overflowY: "auto" }}>
+
+        <nav style={{ padding: "8px 0", flex: 1, overflowY: "auto", overflowX: "hidden" }}>
           {groups.map(group => {
             const items = menu.filter(m => m.group === group);
             return (
               <div key={group} style={{ marginBottom: 4 }}>
-                <div style={{ padding: "8px 16px 4px", fontSize: 10, fontWeight: 700, color: T.textMut, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                  {group}
-                </div>
+                {sidebarOpen && (
+                  <div style={{ padding: "8px 16px 4px", fontSize: 10, fontWeight: 700, color: T.textMut, letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                    {group}
+                  </div>
+                )}
                 {items.map(item => (
                   <button
                     key={item.id}
                     onClick={() => setPage(item.id)}
+                    title={!sidebarOpen ? item.label : undefined}
                     style={{
-                      display: "flex", alignItems: "center", gap: 9,
-                      width: "100%", padding: "9px 16px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: sidebarOpen ? 9 : 0,
+                      width: "100%",
+                      padding: sidebarOpen ? "9px 16px" : "10px 0",
+                      justifyContent: sidebarOpen ? "flex-start" : "center",
                       background: page === item.id ? T.accent + "22" : "transparent",
                       color: page === item.id ? T.accent : T.textSec,
-                      border: "none", cursor: "pointer", fontSize: 13,
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: 13,
                       textAlign: "left",
                       borderLeft: page === item.id ? `3px solid ${T.accent}` : "3px solid transparent",
                       borderRadius: "0 4px 4px 0",
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    <span style={{ fontSize: 13, opacity: 0.8 }}>{item.icon}</span>
-                    {item.label}
+                    <span style={{ fontSize: 14, opacity: 0.9 }}>{item.icon}</span>
+                    {sidebarOpen && item.label}
                   </button>
                 ))}
               </div>
             );
           })}
         </nav>
-        <div style={{ padding: "10px 16px", borderTop: `1px solid ${T.border}` }}>
-          <div style={{ fontSize: 10, color: T.textMut }}>v{config.version}</div>
+
+        <div style={{
+          padding: sidebarOpen ? "10px 16px" : "10px 0",
+          borderTop: `1px solid ${T.border}`,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: sidebarOpen ? "flex-start" : "center",
+          gap: 6,
+        }}>
+          {sidebarOpen && <div style={{ fontSize: 10, color: T.textMut }}>v{config.version}</div>}
+          <button
+            onClick={() => setSidebarOpen(o => !o)}
+            style={{
+              background: "none",
+              border: `1px solid ${T.border}`,
+              borderRadius: 4,
+              color: T.textSec,
+              cursor: "pointer",
+              fontSize: 11,
+              padding: "3px 7px",
+              lineHeight: 1,
+            }}
+            title={sidebarOpen ? "Daralt" : "Genişlet"}
+          >
+            {sidebarOpen ? "◀" : "▶"}
+          </button>
         </div>
       </div>
 
@@ -141,7 +186,6 @@ function AppInner() {
         <div style={{ padding: "10px 28px", borderBottom: `1px solid ${T.border}`, background: T.bgCard, display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{titles[page]}</div>
           {error && <span style={{ fontSize: 12, color: T.red }}>{error}</span>}
-          {/* Dil seçici */}
           <div style={{ marginLeft: "auto", display: "flex", gap: 4, alignItems: "center" }}>
             {LANGUAGES.map(l => (
               <button
@@ -165,6 +209,7 @@ function AppInner() {
             ))}
           </div>
         </div>
+
         {/* Sayfa */}
         <div style={{ flex: 1, overflow: "auto", padding: 28, background: T.bg }}>
           {page === "dashboard"  && <DashboardPage />}
@@ -174,6 +219,8 @@ function AppInner() {
           {page === "flowchart"  && <FlowChartPage />}
           {page === "quotes"     && <QuotesPage />}
           {page === "ai"         && <AIPage parts={parts} />}
+          {page === "nearby"     && <NearbyPage />}
+          {page === "weight"     && <WeightPage />}
           {page === "settings"   && <SettingsPage />}
         </div>
       </div>

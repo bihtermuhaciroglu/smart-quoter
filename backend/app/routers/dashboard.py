@@ -22,6 +22,6 @@ def get_stats(db: Session = Depends(get_db)):
         "fmea_entries": db.query(func.count(FMEAAnalysis.id)).scalar(),
         "high_rpn_count": len(high_rpn),
         "total_revenue": sum(q.total_cost for q in accepted),
-        "recent_quotes": [{"id": q.id, "quote_number": q.quote_number, "customer_name": q.customer_name, "unit_price": q.unit_price, "status": q.status} for q in recent],
+        "recent_quotes": [{"id": q.id, "quote_number": q.quote_number, "customer_name": q.customer_name, "unit_price": q.unit_price, "total_amount": q.total_cost, "status": q.status} for q in recent],
         "risk_alerts":  [{"failure_mode": f.failure_mode, "rpn": f.rpn, "risk_level": f.risk_level} for f in high_rpn[:5]],
     }

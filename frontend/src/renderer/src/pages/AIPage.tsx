@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Part } from "../api/parts";
+import { useEffect, useState } from "react";
+import axios from "axios";
+import { getParts, Part } from "../api/parts";
 import client from "../api/client";
 import { T, inp, btn, card } from "../theme";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -8,6 +9,8 @@ interface Props { parts: Part[]; }
 
 export default function AIPage({ parts }: Props) {
   const { t } = useLanguage();
+  const [localParts, setLocalParts] = useState<Part[]>([]);
+  const allParts = parts?.length ? parts : localParts;
   const [aiPartId, setAiPartId] = useState<number | null>(null);
   const [aiName, setAiName] = useState("");
   const [aiMaterial, setAiMaterial] = useState("");
@@ -15,7 +18,13 @@ export default function AIPage({ parts }: Props) {
   const [aiLoading, setAiLoading] = useState(false);
   const [activeType, setActiveType] = useState<string>("");
 
-  const selectedPart = parts.find(p => p.id === aiPartId);
+  useEffect(() => {
+    if (!parts?.length) {
+      getParts().then(setLocalParts);
+    }
+  }, [parts]);
+
+  const selectedPart = allParts.find(p => p.id === aiPartId);
   const name = selectedPart?.name ?? aiName;
   const material = selectedPart?.material_type ?? aiMaterial;
 
@@ -31,7 +40,10 @@ export default function AIPage({ parts }: Props) {
       };
       const res = await client.post(endpoints[type], bodies[type]);
       setAiResult(res.data.result);
-    } catch { setAiResult("AI'ya bağlanılamadı."); }
+    } catch (e) {
+      const detail = axios.isAxiosError(e) ? e.response?.data?.detail : null;
+      setAiResult(typeof detail === "string" ? detail : "AI'ya bağlanılamadı.");
+    }
     setAiLoading(false);
   }
 
@@ -42,15 +54,15 @@ export default function AIPage({ parts }: Props) {
   };
 
   return (
-    <div style={{ maxWidth: 800 }}>
-      <div style={{ ...card(), marginBottom: 20 }}>
+    <div style={{ maxWidth: 800, display: "flex", flexDirection: "column", gap: 24 }}>
+      <div style={{ ...card() }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: T.text, marginBottom: 14 }}>{t.ai.selectPart}</div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
           <label style={{ fontSize: 13, color: T.textSec, fontWeight: 600, whiteSpace: "nowrap" }}>{t.ai.selectHint}:</label>
           <select value={aiPartId ?? ""} onChange={e => setAiPartId(e.target.value ? Number(e.target.value) : null)}
             style={inp()}>
             <option value="">— {t.ai.selectHint} —</option>
-            {parts.map(p => <option key={p.id} value={p.id}>{p.name} ({p.material_type ?? "—"})</option>)}
+            {allParts.map(p => <option key={p.id} value={p.id}>{p.name} ({p.material_type ?? "—"})</option>)}
           </select>
         </div>
         {!aiPartId && (
@@ -67,7 +79,7 @@ export default function AIPage({ parts }: Props) {
         )}
       </div>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
+      <div style={{ display: "flex", gap: 10 }}>
         {([["operations", t.ai.suggestOps, T.accent], ["fmea", t.ai.suggestFmea, T.orange], ["price", t.ai.suggestPrice, T.green]] as const).map(([type, label, color]) => (
           <button key={type} onClick={() => handleAI(type)} disabled={aiLoading}
             style={{ ...btn(color), opacity: aiLoading ? 0.6 : 1, flex: 1 }}>
