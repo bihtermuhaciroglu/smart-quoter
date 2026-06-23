@@ -5,10 +5,15 @@ backend/*.pyc
 backend/.env
 backend/smart_quoter.db
 backend/uploads/
+backend/build/
+backend/dist/
+backend/*.spec
+backend/venv/
 
 # Node
 frontend/node_modules/
 frontend/dist/
+frontend/dist-web/
 frontend/out/
 frontend/.dist/
 
