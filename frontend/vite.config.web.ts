@@ -46,6 +46,9 @@ export default defineConfig({
     }
   },
   define: {
-    'process.env': {}
+    'process.env': {},
+    'import.meta.env.VITE_API_URL': JSON.stringify(
+      process.env.VITE_API_URL || 'https://smart-quoter-production-d52e.up.railway.app'
+    )
   }
 })
